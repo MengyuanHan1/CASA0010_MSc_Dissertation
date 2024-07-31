@@ -1,0 +1,94 @@
+```{r}
+# Load libraries
+library(sf)
+library(gstat)
+library(sp)
+```
+
+```{r}
+
+# Read gpkg
+msoa <- st_read("England_with_variables.gpkg", layer = "msoa")
+```
+
+```{r}
+library(sf)
+library(ggplot2)
+
+# Histogram
+p1 <- ggplot(msoa, aes(x = `Total.annual.income....`)) +
+  geom_histogram(bins = 500, fill = "skyblue", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribution of Total Annual Income",
+       x = "Total Annual Income (£)",
+       y = "Frequency")
+
+# Density Map
+p2 <- ggplot(msoa, aes(x = `Total.annual.income....`)) +
+  geom_density(fill = "skyblue", alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Density Plot of Total Annual Income",
+       x = "Total Annual Income (£)",
+       y = "Density")
+
+# Plot
+print(p1)
+print(p2)
+
+# Log-transformation
+p3 <- ggplot(msoa, aes(x = log(`Total.annual.income....`))) +
+  geom_histogram(bins = 500, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribution of Log-Transformed Total Annual Income",
+       x = "Log(Total Annual Income (£))",
+       y = "Frequency")
+
+# Plot
+print(p3)
+
+```
+
+```{r}
+# sf to sp
+msoa_sp <- as(msoa, "Spatial")
+```
+
+```{r}
+# Mark the Nulls
+msoa_sp$income_missing <- is.na(msoa_sp$`Total.annual.income....`)
+```
+
+```{r}
+names(msoa_sp)
+```
+
+```{r}
+
+# Create a dataset only contains the non-nulls
+msoa_complete <- msoa_sp[!msoa_sp$income_missing, ]
+
+# Create variogram
+v <- variogram(log(`Total.annual.income....`) ~ 1, data = msoa_complete)
+m <- fit.variogram(v, vgm("Sph"))
+
+# Kriging interpolation
+kriged <- krige(log(`Total.annual.income....`) ~ 1, msoa_complete, msoa_sp, model = m)
+
+# Back to the original scale
+msoa_sp$income_kriged <- exp(kriged$var1.pred)
+
+# Fill the nulls with the results
+msoa_sp$`Total.annual.income....`[msoa_sp$income_missing] <- msoa_sp$income_kriged[msoa_sp$income_missing]
+
+# Back to sf
+msoa_updated <- st_as_sf(msoa_sp)
+
+# Save
+st_write(msoa_updated, "England_with_variables_updated.gpkg", layer = "msoa", driver = "GPKG")
+```
+
+
+
+
+
+
